@@ -1,0 +1,380 @@
+---
+title: "PUMS Census Data Analysis"
+author: "Aiden Hogan"
+format: #Creates a pdf and html format
+  html:
+    code-fold: true
+    embed-resources: true
+    theme: flatly
+  pdf: 
+    code-fold: false  
+    echo: false
+    number-sections: true
+    documentclass: article
+    include-in-header:
+      text: |
+        \usepackage{amsmath}
+        \usepackage{fullpage}
+execute:
+  warning: false
+  message: false
+---
+
+## Introduction
+
+With the following charts, I will be analyzing 5 year PUMS census data from 2020-2024 for Oregon, state code: 41. All analysis is conducted on this data, thus any comments implicitly refer to solely the data available therein.
+
+This report explores regional economic and demographic trends, specifically within the state of Oregon. Analysis is centered on identifying influencing factors and explaining the data.
+
+Through visualizing individual and household income, assessing demographic shifts and potential causal relationships, and examining the economic influence of commute times and migration on individual wages, this brief represents a high level overview of Oregon's socioeconomic landscape, utilizing the most up to date information available. All analysis was conducted in R, primarily relying on the `tidyverse` and `ggplot2` libraries.
+
+The following are several figures analyzed with these factors in mind, along with eventual conclusions, with the R code available under each analysis, as well as in the Appendix.
+
+\newpage
+
+## Initial Setup
+
+```{r}
+#| label: set-up
+library(tidyverse)
+library(readr) #Lets us read large files faster
+library(ggplot2)
+
+options(scipen = 999) #Turns scientific notation to standard form
+
+#OREGON
+or_data <- read_csv("psam_p41.csv", show_col = FALSE)
+or_housing_data <- read_csv("psam_h41.csv", show_col = FALSE)
+
+#Allows us to analyze household data in relation to individual data.
+#For example, the use of combined data in figure two allows for analysis of 
+#household income, filtering for individuals over the age of 18.
+#(Emancipated minors are excluded).
+combined_or_data <- or_data |>
+  left_join(or_housing_data |> select(SERIALNO, HINCP), by = "SERIALNO")
+```
+
+## Data and Analysis
+
+### Individual Income Distribution
+
+This is a histogram displaying the income brackets of individuals over the age of 18. Retirees were not excluded as social security and other non-salary sources are included in PUMS "income". This is primarily a visualization of quantity of individuals in income brackets smaller than regularly reported. For example, we see the mode make less than \$10,000 USD, and visual approximation would suggest the median (per capita) income be somewhere around \$50,000.
+
+```{r}
+#| label: fig-income-hist
+#| fig-cap: "**Amount of Individuals in Income Ranges** \n *In increments of $10,000*"
+#PINCP: Total person's income
+#AGEP: Age
+#Filter for 18+ to exclude minors (not expected to necessarily have income)
+ggplot(or_data |> filter(AGEP >= 18), aes(x = PINCP)) + 
+  geom_histogram(binwidth = 10000, color = "white", fill = "dark blue", boundary = 0) +
+  scale_x_continuous(
+    "Income per non-minor Individual",
+    limits = c(0, 200000), 
+    expand = expansion(mult = c(0.002, 0.04)),
+    breaks = seq(0, 200000, by = 50000),
+    labels = scales::dollar_format()
+  ) +
+  scale_y_continuous(
+    "Number of Individuals",
+    labels = scales::comma_format(),
+    expand = expansion(mult = c(0, .05))
+  ) +
+  theme_minimal()
+```
+
+\newpage
+
+### Household Income Distribution
+
+This uses the same restrictions as figure one (individuals 18+). Household income analysis is relevant though because it shows figures not so desperate as those before. The majority of individuals making below \$10,000 USD annually are members of a household that makes some amount more than that. The individual chart shows that over 35,000 individuals are within that income bracket, while the household analysis finds that just over 5,000 households are within that income bracket. This suggests those who make under 10,000 are still able to rely upon other members of their household. Household analysis also shows the mode household makes anywhere from \$40,000 to \$49,999 annually, with over 40,000 households in the anual income range of \$40,000 to \$99,999. Admittedly, some of this data is still obscured, as hypothetically the lowest earners could be more likely to live together, resulting in the lowest earning 5,000 households having a disproportionately high amount of individuals within.
+
+```{r}
+#| label: fig-household-income-hist
+#| fig-cap: "**Amount of Individuals in Income Ranges** \n *In increments of $10,000*"
+#PINCP: Total person's income
+#AGEP: Age
+#Filter for 18+ to exclude minors (not expected to necessarily have income)
+ggplot(combined_or_data |> filter(AGEP >= 18), aes(x = HINCP)) + 
+  geom_histogram(binwidth = 10000, color = "white", fill = "dark blue", boundary = 0) +
+  scale_x_continuous(
+    "Income per Household",
+    limits = c(0, 400000), 
+    expand = expansion(mult = c(0.002, 0.04)),
+    breaks = seq(0, 400000, by = 50000),
+    labels = scales::dollar_format()
+  ) +
+  scale_y_continuous(
+    "Number of Households",
+    labels = scales::comma_format(),
+    expand = expansion(mult = c(0, .05))
+  ) +
+  theme_minimal() +
+  theme(axis.ticks.x = element_line(size = 3, colour = "black"))
+```
+
+\newpage
+
+### Demographic Age Density
+
+This is a density plot displaying the relative amount of Oregon residences as each age. Significant events are highlighted, though as ranges. As the data was collected over a five year period, this creates smearing wherein in 2020, someone born in 2008 would be 12, but in 2024 they'd be 16. The decline following events is somewhat delayed, as is expected. Additionally there is a significant drop off in the age range from 18 to 24, a region highlighted in blue rather than red. The difference in color is because rather than a specific event having effect on birth rate, this drop off is more suggestive of college age individuals going else-where for academic and career reasons before returing. This region isn't smeared, as PUMS data accurately assesses each individual's age.
+
+```{r}
+#| label: fig-age-density
+#| fig-cap: "**Relative Density of Oregon Residents by Age**"
+#AGEP: Age
+ggplot(or_data, aes(x = AGEP)) +
+  geom_density(fill = "light blue", alpha = .5) +
+  scale_x_continuous(
+    "Age of Residents",
+    limits = c(0, 100),
+    breaks = seq(0, 100, by = 10),
+    expand = expansion(mult = c(0, .015))
+  ) +
+  scale_y_continuous(
+    "Relative Density",
+    expand = expansion(mult = c(0, .1))
+  ) +
+  theme_minimal()+
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+    )+
+  #The FDA Approves Birth Control Pill 1960 (Smeared)
+  annotate(
+    "rect",
+    xmin = 60,
+    xmax = 64,
+    ymin = 0,
+    ymax = Inf, # Top of Graph
+    alpha = .2,
+    fill = "red"
+  )+
+  annotate(
+    geom = "text", 
+    x = 83, 
+    y = Inf,
+    label = "1960: FDA Approves \n Birth Control Pill",
+    color = "black",
+    vjust = 1.1, #Prevent cutoff @ top
+    hjust = 0.5, #Centers text
+  )+
+  #The 2008 Financial Crisis (Smeared)
+  annotate(
+    "rect",
+    xmin = 12, 
+    xmax = 16, 
+    ymin = 0, 
+    ymax = Inf,
+    alpha = 0.2,
+    fill = "red")+
+  #Indentation to fix cut-off in report (page gap).
+  
+  
+  annotate(
+    geom = "text",
+    x = 6,
+    y = Inf,
+    label = "2008: \n Financial \n Crisis",
+    color = "black",
+    vjust = 1.1,
+    hjust = 0.5
+  )+
+  #Typical college age range
+  annotate(
+    "rect",
+    xmin = 18,
+    xmax = 24,
+    ymin = 0,
+    ymax = Inf,
+    alpha = .2,
+    fill = "dark blue"
+  )+
+  annotate(
+    geom = "text",
+    x = 40,
+    y = Inf,
+    label = "Typical College Age \n  Range: 18 - 24",
+    color = "black",
+    vjust = 1.1,
+    hjust = 0.5
+  )
+```
+
+\newpage
+
+### Wage vs. Commute Time
+
+This is a collection of boxplots representing annual wages earned dependent on commute time to work, sorted into increments of 10 minutes. In an effort to increase statistical stability, I began by filtering for commute times reported by at least 100 people, adhering to the Law of Large Numbers to reduce noise in the data. With the remaining increments of commute time, we are able to visualize a five number summary. Lines connect the maximums, minimums, and medians of the boxplots to improve visual clarity of the difference between the upper and lower ranges. Often the three don't align, for example in the "\<120" minute increment, the 25th percentile​ (Q1​, the bottom of the box, representing the cut-off for the top 75% of earners) increased, while the 75th percentile (Q3, representing the cut-off for the highest paid 25%) decreased. Additionally I plotted the mean of each group as diamonds. The mean was consistently and significantly higher than the medians, telling us we're working with right-skewed data.
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-wages-vs-commute-box
+#| fig-cap: "**Wage Dependent on Commute Time**"
+#JWMNP: Travel time to work
+#PINCP: Total person's income
+or_data |>
+  filter(!is.na(JWMNP)) |>
+  mutate(commute_bin = cut_width(JWMNP, 10, boundary = 0)) |>
+  group_by(commute_bin) |>
+  filter(n() >= 100) |> #Law of large numbers, n >= 100
+  ungroup() |> #best practice
+
+ggplot(aes(x = commute_bin, y = PINCP, fill = as.numeric(commute_bin))) +
+  geom_boxplot(color = "black", outlier.shape = NA, staplewidth = .15)+
+  scale_fill_viridis_c(option = "viridis", direction = -1) +
+  #Show skewness
+  stat_summary(fun = mean, geom = "point", shape = "diamond", size = 4, color = "black") + 
+  #Track median
+  stat_summary(fun = median, geom = "line", aes(group = 1),
+                color = "black", linewidth = 0.75)+
+  #Track Q1
+  stat_summary(fun = quantile, fun.args = list(probs = 0.25),
+              geom = "line", aes(group = 1), color = "black", linewidth = 0.5) +
+  #Track Q3
+  stat_summary(fun = quantile, geom = "line",  fun.args = list(probs = 0.75), 
+  aes(group = 1), color = "black", linewidth = 0.5) + 
+  coord_cartesian(ylim = c(0, 200000))+
+  scale_x_discrete(
+    "Commute Time to Work in Minutes",
+    labels = c("<10", "<20", "<30", "<40",
+              "<50", "<60", "<70", "<80", "<90", "<120", "<130", "<150")
+  ) +
+  scale_y_continuous(
+    "Annual Wages",
+    labels = scales::dollar_format()
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none") #Gets rid of the gradient label
+```
+
+\newpage
+
+### Regional Wage Comparison
+
+This is a collection of graphs showing average wages dependent on age, for Oregon residents based on their origin. Only states that border Oregon and Oregon itself were included. The graphs were created using facet_wrap(), which serves to declutter the data while still letting us see them overlayed, which is useful to compare relative salaries. We can see for example, the difference in salary is low until about the age of 25, which is when you would expect degree holders to begin attaining jobs. This suggests that those who move to Oregon may do so specifically in order to attain higher salaries. The only people who make significantly less than native Oregonians are those coming from Nevada.
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-wages-vs-age-facet
+#| fig-cap: "**Regional Average Wage Comparison** \n *Based on Origin of Individuals Living in OR*"
+#POBP: Place of Birth
+#WAGP: Wages or salary income past 12 months 
+#AGEP: Age
+state_lookup <- tibble(
+  POBP = c(6, 16, 32, 41, 53), #Place of Birth Code
+  Origin_State = c("California", "Idaho", "Nevada", "Oregon", "Washington") #Code value
+)
+#Set specific colors for visual clarity & distinctness
+border_colors <- c(
+  "California"         = "#FF7F00",
+  "Idaho"              = "#377EB8", 
+  "Nevada"             = "#4DAF4A",
+  "Oregon"             = "#E41A1C",
+  "Washington"         = "#984EA3"
+)
+summarized_data <- or_data |> 
+  mutate(across(POBP, as.numeric)) |> # Removes leading 0s
+  #Creates a table where we can search what state people were born in
+  left_join(state_lookup, by = "POBP") |> 
+  filter(!is.na(WAGP), !is.na(POBP), !is.na(Origin_State)) |>
+  filter(AGEP >= 18, AGEP <= 65) |> #Only looking at working age people for this chart
+  group_by(AGEP, Origin_State) |>
+  summarize(mean_wage = mean(WAGP, na.rm = TRUE),
+  .groups = "drop") #much faster to calculate first
+
+  bind_rows(
+  summarized_data |> mutate(Facet_Label = "All States Overlay"),
+  summarized_data |> mutate(Facet_Label = Origin_State)
+  ) |>
+
+ggplot(aes(x = AGEP, y = mean_wage, color = Origin_State)) +
+  geom_smooth(method = "loess", se = FALSE, span = .3) +
+  scale_color_manual(values = border_colors) +
+  facet_wrap(~ Facet_Label, ncol = 3) +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  labs(
+    x = "Age of individuals",
+    y = "Average Wage",
+  ) +
+  theme(legend.position = "none") #Gets rid of the Origin_State label
+```
+
+\newpage
+
+## Conclusion
+
+The following results were observed:
+
+Household income was significantly higher than individual income (as expected), though success was more than the combination of two typical individuals. For example, about 11,000 individuals made \$50,000 or more, while over 8,000 households made \$100,000 or more. Household income is further right skewed than individual. *See Figures 1 and 2*.
+
+Further observation aligned events significant to birth rate such as the FDA approval of the birth control pill, and the 2008 financial crisis, with lower relative populations of specific ages. Additionally, residency saw a sharp decline from the ages of 18-24, suggesting more census respondents left Oregon for college or other training than came to Oregon seeking education. *See Figure 3*.
+
+The relationship of annual wages to the amount of time spent commuting to work is also outlined, with a general increase observed from no commute. Relative commute times above this vary, with 10-39 minute commutes all making more than the previous bin (in increments of 10), with a varying effect from 40-89 minutes, until a steep drop-off in compensation observed in commutes in the range of 110 to 119 minutes, before increasing again. *See Figure 4*.
+
+The final observation is the relationship between birth-place of states bordering Oregon, along with Oregon itself in average wages. The data shows those who were born in bordering states who now reside in Oregon, compared to those who were born and reside in Oregon. In general, those who moved to Oregon make higher salaries, suggesting they move to Oregon for career advancement. *See Figure 5*.
+
+\newpage
+
+## Appendix
+
+```{r}
+#| ref.label: knitr::all_labels()
+#| echo: true
+#| eval: false
+
+#This makes all the code visible in the appendix.
+```
+
+### Setup
+
+\newpage
+
+### Code for Figure One (1)
+
+```{r}
+#| ref.label: fig-income-hist
+#| echo: true
+#| eval: false
+```
+
+### Code for Figure Two (2)
+
+```{r}
+#| ref.label: fig-household-income-hist
+#| echo: true
+#| eval: false
+```
+
+\newpage
+
+### Code for Figure Three (3)
+
+```{r}
+#| ref.label: fig-age-density
+#| echo: true
+#| eval: false
+```
+
+\newpage
+
+### Code for Figure Four (4)
+
+```{r}
+#| ref.label: fig-wages-vs-commute-box
+#| echo: true
+#| eval: false
+```
+
+\newpage
+
+### Code for Figure Five (5)
+
+```{r}
+#| ref.label: fig-wages-vs-age-facet
+#| echo: true
+#| eval: false
+```
